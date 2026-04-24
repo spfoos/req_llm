@@ -935,6 +935,88 @@ defmodule ReqLLM.Providers.GoogleTest do
     end
   end
 
+  describe "decode_stream_event/2 finish_reason capture" do
+    setup do
+      {:ok, model: %LLMDB.Model{id: "gemini-2.5-flash", provider: :google}}
+    end
+
+    test "finishReason on candidate without content.parts + usageMetadata", %{model: model} do
+      event = %{
+        data: %{
+          "candidates" => [%{"finishReason" => "STOP", "index" => 0}],
+          "usageMetadata" => %{
+            "promptTokenCount" => 10,
+            "candidatesTokenCount" => 5,
+            "totalTokenCount" => 15
+          }
+        }
+      }
+
+      [meta_chunk] = Google.decode_stream_event(event, model)
+      assert meta_chunk.type == :meta
+      assert meta_chunk.metadata[:finish_reason] == "stop"
+      assert meta_chunk.metadata[:terminal?] == true
+      assert meta_chunk.metadata[:usage][:input_tokens] == 10
+    end
+
+    test "finishReason on candidate without content.parts (no usage)", %{model: model} do
+      event = %{data: %{"candidates" => [%{"finishReason" => "STOP", "index" => 0}]}}
+
+      [meta_chunk] = Google.decode_stream_event(event, model)
+      assert meta_chunk.type == :meta
+      assert meta_chunk.metadata[:finish_reason] == "stop"
+      assert meta_chunk.metadata[:terminal?] == true
+    end
+
+    test "finishReason on candidate with content role but no parts key", %{model: model} do
+      event = %{
+        data: %{
+          "candidates" => [
+            %{"content" => %{"role" => "model"}, "finishReason" => "STOP", "index" => 0}
+          ],
+          "usageMetadata" => %{"promptTokenCount" => 1, "totalTokenCount" => 1}
+        }
+      }
+
+      [meta_chunk] = Google.decode_stream_event(event, model)
+      assert meta_chunk.type == :meta
+      assert meta_chunk.metadata[:finish_reason] == "stop"
+      assert meta_chunk.metadata[:terminal?] == true
+    end
+
+    test "usageMetadata alone still has no finish_reason (unchanged)", %{model: model} do
+      event = %{
+        data: %{
+          "usageMetadata" => %{"promptTokenCount" => 1, "totalTokenCount" => 1}
+        }
+      }
+
+      [meta_chunk] = Google.decode_stream_event(event, model)
+      assert meta_chunk.type == :meta
+      refute Map.has_key?(meta_chunk.metadata, :finish_reason)
+      assert meta_chunk.metadata[:terminal?] == true
+    end
+
+    test "content.parts + finishReason still preferred (regression)", %{model: model} do
+      event = %{
+        data: %{
+          "candidates" => [
+            %{
+              "content" => %{"parts" => [%{"text" => "hello"}], "role" => "model"},
+              "finishReason" => "STOP"
+            }
+          ],
+          "usageMetadata" => %{"promptTokenCount" => 2, "totalTokenCount" => 2}
+        }
+      }
+
+      chunks = Google.decode_stream_event(event, model)
+      assert Enum.any?(chunks, &match?(%{type: :content, text: "hello"}, &1))
+      meta_chunk = Enum.find(chunks, &(&1.type == :meta))
+      assert meta_chunk.metadata[:finish_reason] == "stop"
+    end
+  end
+
   describe "option translation" do
     test "provider implements translate_options/3" do
       # Google implements translate_options/3 for stream? alias handling

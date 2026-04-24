@@ -974,11 +974,17 @@ defmodule ReqLLM.StreamServer do
       |> maybe_put_request_id(state.telemetry)
       |> normalize_public_stream_finish_reason()
 
-    if state.terminated? do
-      Map.put_new(meta, :finish_reason, :stop)
-    else
-      Map.put_new(meta, :finish_reason, :incomplete)
-    end
+    cleanly_terminated? =
+      state.terminated? or Map.get(state.metadata, :terminal?) == true
+
+    meta =
+      if cleanly_terminated? do
+        Map.put_new(meta, :finish_reason, :stop)
+      else
+        Map.put_new(meta, :finish_reason, :incomplete)
+      end
+
+    Map.delete(meta, :terminal?)
   end
 
   defp reply_to_waiting_callers(state) do

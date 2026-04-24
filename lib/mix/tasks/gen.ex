@@ -420,8 +420,6 @@ defmodule Mix.Tasks.ReqLlm.Gen do
         if Map.has_key?(usage, :total_cost) do
           cost = :erlang.float_to_binary(usage.total_cost, decimals: 6)
           log_puts("   Cost: $#{cost}", :debug, log_level)
-          # credo:disable-for-next-line Credo.Check.Warning.IoInspect
-          IO.inspect(usage, label: "DEBUG: Full usage object")
         end
 
       _ ->

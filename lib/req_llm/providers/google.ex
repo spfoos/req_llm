@@ -2352,7 +2352,7 @@ defmodule ReqLLM.Providers.Google do
         convert_url_content_part(part, url)
 
       _ ->
-        %{text: to_string(part)}
+        %{text: inspect(part)}
     end
   end
 
@@ -2363,7 +2363,7 @@ defmodule ReqLLM.Providers.Google do
         convert_url_content_part(part, url)
 
       _ ->
-        %{text: to_string(part)}
+        %{text: inspect(part)}
     end
   end
 
@@ -2550,6 +2550,31 @@ defmodule ReqLLM.Providers.Google do
         else
           chunks
         end
+
+      %{
+        "candidates" => [%{"finishReason" => finish_reason} | _],
+        "usageMetadata" => usage
+      }
+      when finish_reason != nil ->
+        meta = %{
+          usage: convert_google_usage_for_streaming(usage),
+          finish_reason: normalize_google_finish_reason(finish_reason),
+          model: model.id,
+          terminal?: true
+        }
+
+        meta = if provider_meta, do: Map.put(meta, :provider_meta, provider_meta), else: meta
+        [ReqLLM.StreamChunk.meta(meta)]
+
+      %{"candidates" => [%{"finishReason" => finish_reason} | _]}
+      when finish_reason != nil ->
+        meta = %{
+          finish_reason: normalize_google_finish_reason(finish_reason),
+          terminal?: true
+        }
+
+        meta = if provider_meta, do: Map.put(meta, :provider_meta, provider_meta), else: meta
+        [ReqLLM.StreamChunk.meta(meta)]
 
       %{"usageMetadata" => usage} ->
         meta = %{
