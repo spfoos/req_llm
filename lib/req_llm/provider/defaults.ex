@@ -847,7 +847,7 @@ defmodule ReqLLM.Provider.Defaults do
     |> maybe_add_field(:tool_calls, tc)
     |> maybe_add_field(:tool_call_id, tcid)
     |> maybe_add_field(:name, name)
-    |> maybe_add_field(:reasoning_content, reasoning_content)
+    |> maybe_add_assistant_reasoning(r, reasoning_content)
     |> maybe_add_field(:reasoning_details, rd)
     |> maybe_add_field(:metadata, metadata)
   end
@@ -865,8 +865,7 @@ defmodule ReqLLM.Provider.Defaults do
 
     reasoning_content =
       thinking_parts
-      |> Enum.map(fn %ReqLLM.Message.ContentPart{text: text} -> text end)
-      |> Enum.join("")
+      |> Enum.map_join("", fn %ReqLLM.Message.ContentPart{text: text} -> text end)
 
     if reasoning_content == "" do
       {nil, content}
@@ -879,6 +878,12 @@ defmodule ReqLLM.Provider.Defaults do
   defp maybe_add_field(message, _key, []), do: message
   defp maybe_add_field(message, _key, %{} = value) when map_size(value) == 0, do: message
   defp maybe_add_field(message, key, value), do: Map.put(message, key, value)
+
+  defp maybe_add_assistant_reasoning(message, :assistant, reasoning_content) do
+    maybe_add_field(message, :reasoning_content, reasoning_content)
+  end
+
+  defp maybe_add_assistant_reasoning(message, _, _), do: message
 
   defp encode_openai_content(content) when is_binary(content), do: content
 
@@ -976,8 +981,8 @@ defmodule ReqLLM.Provider.Defaults do
     }
   end
 
-  # Reasoning model artifacts (e.g. chain-of-thought) — strip from OpenAI encoding
-  # since the format has no standard representation for thinking content.
+  # Thinking content is extracted to the top-level reasoning_content field
+  # for assistant messages on OpenAI-compatible providers that support it.
   defp encode_openai_content_part(%ReqLLM.Message.ContentPart{type: :thinking}), do: nil
 
   defp encode_openai_content_part(_), do: nil
