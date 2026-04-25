@@ -836,17 +836,43 @@ defmodule ReqLLM.Provider.Defaults do
          reasoning_details: rd,
          metadata: metadata
        }) do
+    {reasoning_content, content_without_thinking} = extract_reasoning_content(c)
+
     base_message = %{
       role: to_string(r),
-      content: encode_openai_content(c)
+      content: encode_openai_content(content_without_thinking)
     }
 
     base_message
     |> maybe_add_field(:tool_calls, tc)
     |> maybe_add_field(:tool_call_id, tcid)
     |> maybe_add_field(:name, name)
+    |> maybe_add_field(:reasoning_content, reasoning_content)
     |> maybe_add_field(:reasoning_details, rd)
     |> maybe_add_field(:metadata, metadata)
+  end
+
+  # Extract thinking content parts and return {reasoning_content_string, content_without_thinking_parts}
+  defp extract_reasoning_content(nil), do: {nil, nil}
+  defp extract_reasoning_content(content) when is_binary(content), do: {nil, content}
+
+  defp extract_reasoning_content(content) when is_list(content) do
+    {thinking_parts, rest} =
+      Enum.split_with(content, fn
+        %ReqLLM.Message.ContentPart{type: :thinking} -> true
+        _ -> false
+      end)
+
+    reasoning_content =
+      thinking_parts
+      |> Enum.map(fn %ReqLLM.Message.ContentPart{text: text} -> text end)
+      |> Enum.join("")
+
+    if reasoning_content == "" do
+      {nil, content}
+    else
+      {reasoning_content, rest}
+    end
   end
 
   defp maybe_add_field(message, _key, nil), do: message
