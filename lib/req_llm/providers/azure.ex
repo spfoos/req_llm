@@ -275,6 +275,7 @@ defmodule ReqLLM.Providers.Azure do
     "o3" => __MODULE__.OpenAI,
     "o4" => __MODULE__.OpenAI,
     "deepseek" => __MODULE__.OpenAI,
+    "DeepSeek" => __MODULE__.OpenAI,
     "mai-ds" => __MODULE__.OpenAI,
     "claude" => __MODULE__.Anthropic,
     "grok" => __MODULE__.OpenAI,
@@ -297,6 +298,7 @@ defmodule ReqLLM.Providers.Azure do
     "o3" => "AZURE_OPENAI_BASE_URL",
     "o4" => "AZURE_OPENAI_BASE_URL",
     "deepseek" => "AZURE_DEEPSEEK_BASE_URL",
+    "DeepSeek" => "AZURE_DEEPSEEK_BASE_URL",
     "mai-ds" => "AZURE_MAI_BASE_URL",
     "Kimi" => "AZURE_KIMI_BASE_URL",
     "kimi" => "AZURE_KIMI_BASE_URL"
@@ -311,6 +313,7 @@ defmodule ReqLLM.Providers.Azure do
     "o3" => "AZURE_OPENAI_API_KEY",
     "o4" => "AZURE_OPENAI_API_KEY",
     "deepseek" => "AZURE_DEEPSEEK_API_KEY",
+    "DeepSeek" => "AZURE_DEEPSEEK_API_KEY",
     "mai-ds" => "AZURE_MAI_API_KEY",
     "Kimi" => "AZURE_KIMI_API_KEY",
     "kimi" => "AZURE_KIMI_API_KEY"
@@ -825,7 +828,17 @@ defmodule ReqLLM.Providers.Azure do
 
     case get_model_family(model_id) do
       family
-      when family in ["gpt", "text-embedding", "o1", "o3", "o4", "deepseek", "mai-ds", "grok"] ->
+      when family in [
+             "gpt",
+             "text-embedding",
+             "o1",
+             "o3",
+             "o4",
+             "deepseek",
+             "DeepSeek",
+             "mai-ds",
+             "grok"
+           ] ->
         synthetic_model = %{model | provider: :openai}
         ReqLLM.Providers.OpenAI.translate_options(operation, synthetic_model, opts)
 
@@ -1266,7 +1279,7 @@ defmodule ReqLLM.Providers.Azure do
       model_family == "claude" && (has_thinking || reasoning_effort) -> 180_000
       model_family in ["o1", "o3", "o4"] && reasoning_effort -> 180_000
       model_family in ["o1", "o3", "o4"] -> 120_000
-      model_family in ["deepseek", "mai-ds"] -> 120_000
+      model_family in ["deepseek", "DeepSeek", "mai-ds"] -> 120_000
       AdapterHelpers.gpt5_model?(model_id) -> 120_000
       true -> 30_000
     end
