@@ -52,6 +52,7 @@ defmodule ReqLLM.Providers.Azure.OpenAI do
     "o4",
     "text-embedding",
     "deepseek",
+    "DeepSeek",
     "mai-ds",
     "grok",
     "Kimi",
