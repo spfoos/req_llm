@@ -28,7 +28,7 @@ defmodule ReqLLM.Application do
       load_dotenv()
     end
 
-    ensure_llm_db_started()
+    load_llm_db_catalog()
     initialize_registry()
     initialize_schema_cache()
 
@@ -142,10 +142,27 @@ defmodule ReqLLM.Application do
     end
   end
 
-  defp ensure_llm_db_started do
-    case Application.ensure_all_started(:llm_db) do
+  # llm_db is an included_application of req_llm (see mix.exs). Load its catalog
+  # into :persistent_term WITHOUT starting it as an OTP application.
+  #
+  # Application.ensure_all_started(:llm_db) would invoke LLMDB.Application.start/2
+  # through the application controller, which then tracks that callback's return
+  # value — {:ok, self()} — as llm_db's "top supervisor". But that value is a bare
+  # process with no sys loop, so OTP hot code upgrades hang on it: during any relup
+  # that updates a gen_server/supervisor, release_handler:get_supervised_procs/0
+  # walks every *started* application and calls sys:get_status on each app's root.
+  # llm_db's root never answers, so it times out after a hardcoded 5s and aborts
+  # the whole install (see cmesh hot-upgrade incident, 2026-06-07).
+  #
+  # Calling start/2 directly runs the exact same bootstrap — its only real effect
+  # is populating the persistent_term catalog (LLMDB.load/0) — but registers no
+  # application master, so there is no unsupervised root for release_handler to
+  # interrogate. As an included_application, llm_db is shipped + loaded with the
+  # release; it just must not be *started*.
+  defp load_llm_db_catalog do
+    case LLMDB.Application.start(:normal, []) do
       {:ok, _} -> :ok
-      {:error, reason} -> raise "failed to start :llm_db: #{inspect(reason)}"
+      {:error, reason} -> raise "failed to load :llm_db catalog: #{inspect(reason)}"
     end
   end
 
