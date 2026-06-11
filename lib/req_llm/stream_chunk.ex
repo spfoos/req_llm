@@ -80,7 +80,7 @@ defmodule ReqLLM.StreamChunk do
             type: Zoi.any(),
             text: Zoi.string() |> Zoi.nullable() |> Zoi.default(nil),
             name: Zoi.string() |> Zoi.nullable() |> Zoi.default(nil),
-            arguments: Zoi.map() |> Zoi.nullable() |> Zoi.default(nil),
+            arguments: Zoi.union([Zoi.map(), Zoi.string()]) |> Zoi.nullable() |> Zoi.default(nil),
             metadata: Zoi.map() |> Zoi.default(%{})
           })
 
@@ -152,7 +152,9 @@ defmodule ReqLLM.StreamChunk do
   ## Parameters
 
     * `name` - The tool/function name being called
-    * `arguments` - The arguments map for the tool call
+    * `arguments` - The arguments map for the tool call, or the raw argument
+      JSON string when it could not be parsed (passed through so the tool
+      layer can reject it visibly instead of running with empty arguments)
     * `metadata` - Optional additional metadata (default: empty map)
 
   ## Examples
@@ -167,9 +169,9 @@ defmodule ReqLLM.StreamChunk do
       chunk.arguments #=> %{query: "par"}
 
   """
-  @spec tool_call(String.t(), map(), map()) :: t()
+  @spec tool_call(String.t(), map() | String.t(), map()) :: t()
   def tool_call(name, arguments, metadata \\ %{})
-      when is_binary(name) and is_map(arguments) and is_map(metadata) do
+      when is_binary(name) and (is_map(arguments) or is_binary(arguments)) and is_map(metadata) do
     %__MODULE__{
       type: :tool_call,
       name: name,
@@ -298,7 +300,7 @@ defmodule ReqLLM.StreamChunk do
     do: {:error, "Thinking chunks must have non-nil text"}
 
   defp validate_by_type(%{type: :tool_call, name: name, arguments: args})
-       when is_binary(name) and is_map(args) do
+       when is_binary(name) and (is_map(args) or is_binary(args)) do
     :ok
   end
 
@@ -324,10 +326,10 @@ defmodule ReqLLM.StreamChunk do
 
           :tool_call ->
             args_preview =
-              if map_size(chunk.arguments || %{}) > 0 do
-                "(...)"
-              else
-                "()"
+              case chunk.arguments do
+                args when is_binary(args) and args != "" -> "(...)"
+                args when is_map(args) and map_size(args) > 0 -> "(...)"
+                _ -> "()"
               end
 
             chunk.name <> args_preview

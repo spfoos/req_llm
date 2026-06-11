@@ -866,7 +866,8 @@ defmodule ReqLLM.StreamResponseTest do
 
       {:ok, response} = StreamResponse.process_stream(stream_response)
 
-      # Should fall back to empty arguments on invalid JSON
+      # The raw joined fragments stay on the wire so the tool layer surfaces
+      # a parse error to the model instead of silently executing with %{}.
       assert length(Response.tool_calls(response)) == 1
       tool_call = hd(Response.tool_calls(response))
 
@@ -876,7 +877,7 @@ defmodule ReqLLM.StreamResponseTest do
              } =
                tool_call
 
-      assert Jason.decode!(args_json) == %{}
+      assert args_json == "{invalid json} more invalid}"
     end
 
     test "handles multiple tool calls with different fragments" do
@@ -1264,7 +1265,8 @@ defmodule ReqLLM.StreamResponseTest do
 
       assert result.type == :tool_calls
       assert length(result.tool_calls) == 1
-      assert hd(result.tool_calls).arguments == %{}
+      # Fail loud: raw pass-through, never a silent %{}.
+      assert hd(result.tool_calls).arguments == "{not valid json"
     end
 
     test "normalizes various finish_reason strings" do

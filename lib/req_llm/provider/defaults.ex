@@ -1320,10 +1320,19 @@ defmodule ReqLLM.Provider.Defaults do
         {arguments, extra_metadata} = normalize_tool_call_arguments(decoded_args, args_json)
         ReqLLM.StreamChunk.tool_call(name, arguments, Map.merge(metadata, extra_metadata))
 
+      # An empty string is the normal streaming prelude — the arguments arrive
+      # later as fragments — not a malformed payload.
+      {:error, _reason} when args_json == "" ->
+        ReqLLM.StreamChunk.tool_call(name, %{}, metadata)
+
       {:error, _reason} ->
+        # Unparseable arguments pass through as the raw string instead of %{}:
+        # the tool executor's own JSON decode then fails and returns a parse
+        # error the model can react to, rather than silently running the tool
+        # with empty arguments.
         ReqLLM.StreamChunk.tool_call(
           name,
-          %{},
+          args_json,
           Map.merge(metadata, %{
             invalid_arguments: true,
             raw_arguments: args_json,
@@ -1337,8 +1346,15 @@ defmodule ReqLLM.Provider.Defaults do
     {arguments, %{}}
   end
 
+  # JSON null means "no arguments", not a malformed payload.
+  defp normalize_tool_call_arguments(nil, _raw_arguments) do
+    {%{}, %{}}
+  end
+
   defp normalize_tool_call_arguments(arguments, raw_arguments) do
-    {%{},
+    # Valid JSON but not an object (array/string/number): keep the raw string
+    # so the tool layer rejects it visibly instead of running with %{}.
+    {raw_arguments,
      %{
        invalid_arguments: true,
        raw_arguments: raw_arguments,
@@ -1385,6 +1401,11 @@ defmodule ReqLLM.Provider.Defaults do
        }) do
     args_json =
       cond do
+        # Binary arguments are always a raw pass-through (unparseable or
+        # non-object JSON) — re-emit them verbatim, never re-encode.
+        is_binary(args) ->
+          args
+
         Map.get(meta, :unparseable_arguments) && is_binary(Map.get(meta, :raw_arguments)) ->
           Map.get(meta, :raw_arguments)
 
@@ -1393,9 +1414,6 @@ defmodule ReqLLM.Provider.Defaults do
 
         is_binary(Map.get(meta, :raw_arguments)) ->
           Map.get(meta, :raw_arguments)
-
-        is_binary(args) ->
-          args
 
         true ->
           Jason.encode!(args)

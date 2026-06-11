@@ -547,7 +547,9 @@ defmodule ReqLLM.Provider.DefaultsTest do
 
       [chunk] = Defaults.default_decode_stream_event(invalid_json_event, model)
       assert chunk.type == :tool_call
-      assert chunk.arguments == %{}
+      # Fail loud: the raw string passes through so the tool layer surfaces a
+      # parse error to the model instead of silently executing with %{}.
+      assert chunk.arguments == "invalid json"
       assert chunk.metadata.invalid_arguments
     end
 
@@ -572,7 +574,8 @@ defmodule ReqLLM.Provider.DefaultsTest do
 
       [chunk] = Defaults.default_decode_stream_event(scalar_args_event, model)
       assert chunk.type == :tool_call
-      assert chunk.arguments == %{}
+      # Non-object JSON passes through raw (fail loud, not %{}).
+      assert chunk.arguments == ~s("Paris")
       assert chunk.metadata.id == "call_scalar"
       assert chunk.metadata.invalid_arguments
       assert chunk.metadata.raw_arguments == ~s("Paris")
@@ -913,7 +916,8 @@ defmodule ReqLLM.Provider.DefaultsTest do
       {_returned_req, returned_resp} = Defaults.default_decode_response({req, resp})
       [tool_call] = returned_resp.body.message.tool_calls
 
-      assert Jason.decode!(tool_call.function.arguments) == %{}
+      # Non-object JSON stays on the wire verbatim (fail loud, not "{}").
+      assert tool_call.function.arguments == ~s("draft")
       assert returned_resp.body.finish_reason == :tool_calls
       assert returned_resp.body.message.metadata == %{}
     end

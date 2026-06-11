@@ -115,7 +115,7 @@ defmodule ReqLLM.Providers.Azure.StreamingTest do
       assert Azure.decode_stream_event(event, model) == []
     end
 
-    test "OpenAI: invalid JSON in tool arguments returns chunk with empty arguments" do
+    test "OpenAI: invalid JSON in tool arguments passes through raw (fail loud)" do
       model = traditional_openai_model()
 
       event = %{
@@ -145,7 +145,10 @@ defmodule ReqLLM.Providers.Azure.StreamingTest do
       result = Azure.decode_stream_event(event, model)
       assert [%ReqLLM.StreamChunk{} = chunk] = result
       assert chunk.type == :tool_call
-      assert chunk.arguments == %{}
+      # Fail loud: the raw string passes through so the tool layer surfaces a
+      # parse error to the model instead of silently executing with %{}.
+      assert chunk.arguments == "this is not valid json"
+      assert chunk.metadata.invalid_arguments
     end
 
     test "OpenAI: nil tool name in streaming delta returns meta chunk" do
@@ -380,7 +383,9 @@ defmodule ReqLLM.Providers.Azure.StreamingTest do
       [chunk] = Azure.decode_stream_event(event, model)
       assert chunk.type == :tool_call
       assert chunk.name == "get_weather"
-      assert chunk.arguments == %{}
+      # The inline opening fragment is preserved as a raw binary so stream
+      # reconstruction can prepend it to the remaining fragments.
+      assert chunk.arguments == "{\"loc"
     end
 
     test "Claude: streaming finish_reason variations" do

@@ -132,15 +132,33 @@ defmodule ReqLLM.Response.Stream do
         Map.delete(tool_call, :index)
 
       json_str ->
-        case Jason.decode(json_str) do
-          {:ok, args} ->
-            tool_call
-            |> Map.put(:arguments, args)
-            |> Map.delete(:index)
+        # Some providers put the opening fragment inline on the first delta;
+        # it survives as a raw binary in :arguments — prepend it so the joined
+        # payload is complete.
+        raw =
+          case tool_call.arguments do
+            prefix when is_binary(prefix) -> prefix <> json_str
+            _ -> json_str
+          end
 
-          {:error, _} ->
-            Map.delete(tool_call, :index)
-        end
+        arguments =
+          case Jason.decode(raw) do
+            {:ok, args} when is_map(args) ->
+              args
+
+            _ when raw == "" ->
+              %{}
+
+            _ ->
+              # Unparseable or non-object arguments pass through raw so the
+              # tool layer surfaces a parse error to the model instead of
+              # silently executing with %{}.
+              raw
+          end
+
+        tool_call
+        |> Map.put(:arguments, arguments)
+        |> Map.delete(:index)
     end
   end
 

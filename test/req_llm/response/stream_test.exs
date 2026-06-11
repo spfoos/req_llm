@@ -142,7 +142,7 @@ defmodule ReqLLM.Response.StreamTest do
       assert summary.usage == nil
     end
 
-    test "handles malformed JSON in tool call args" do
+    test "malformed JSON in tool call args passes through raw (fail loud, not %{})" do
       chunks = [
         StreamChunk.tool_call("broken", %{}, %{id: "c1", index: 0}),
         StreamChunk.meta(%{tool_call_args: %{index: 0, fragment: "{not valid json"}})
@@ -151,6 +151,52 @@ defmodule ReqLLM.Response.StreamTest do
       summary = ResponseStream.summarize(chunks)
 
       assert length(summary.tool_calls) == 1
+      # The raw string reaches the tool layer, whose JSON decode fails and
+      # returns a parse error to the model — never silently execute with %{}.
+      assert hd(summary.tool_calls).arguments == "{not valid json"
+    end
+
+    test "first-delta inline fragment is prepended to streamed fragments" do
+      chunks = [
+        StreamChunk.tool_call("get_weather", "{\"city\":", %{id: "c1", index: 0}),
+        StreamChunk.meta(%{tool_call_args: %{index: 0, fragment: " \"NYC\"}"}})
+      ]
+
+      summary = ResponseStream.summarize(chunks)
+
+      assert hd(summary.tool_calls).arguments == %{"city" => "NYC"}
+    end
+
+    test "truncated payload spanning first delta and fragments passes through raw" do
+      chunks = [
+        StreamChunk.tool_call("dispatch", "{\"agents\":", %{id: "c1", index: 0}),
+        StreamChunk.meta(%{tool_call_args: %{index: 0, fragment: " [{\"name\""}})
+      ]
+
+      summary = ResponseStream.summarize(chunks)
+
+      assert hd(summary.tool_calls).arguments == "{\"agents\": [{\"name\""
+    end
+
+    test "valid JSON non-object args pass through raw" do
+      chunks = [
+        StreamChunk.tool_call("func", %{}, %{id: "c1", index: 0}),
+        StreamChunk.meta(%{tool_call_args: %{index: 0, fragment: "[1, 2]"}})
+      ]
+
+      summary = ResponseStream.summarize(chunks)
+
+      assert hd(summary.tool_calls).arguments == "[1, 2]"
+    end
+
+    test "empty joined fragments mean no arguments" do
+      chunks = [
+        StreamChunk.tool_call("no_args", %{}, %{id: "c1", index: 0}),
+        StreamChunk.meta(%{tool_call_args: %{index: 0, fragment: ""}})
+      ]
+
+      summary = ResponseStream.summarize(chunks)
+
       assert hd(summary.tool_calls).arguments == %{}
     end
 
